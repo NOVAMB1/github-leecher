@@ -1,0 +1,10 @@
+=== لینک‌های دانلود ===
+
+https://raw.githubusercontent.com/NOVAMB1/github-leecher/main/archive_20260502_230411.7z.001
+https://raw.githubusercontent.com/NOVAMB1/github-leecher/main/archive_20260502_230411.7z.002
+https://raw.githubusercontent.com/NOVAMB1/github-leecher/main/archive_20260502_230411.7z.003
+https://raw.githubusercontent.com/NOVAMB1/github-leecher/main/archive_20260502_230411.7z.004
+https://raw.githubusercontent.com/NOVAMB1/github-leecher/main/archive_20260502_230411.7z.005
+https://raw.githubusercontent.com/NOVAMB1/github-leecher/main/archive_20260502_230411.7z.006
+
+=== برای合并: 7z x archive_20260502_230411.7z.001 ===
