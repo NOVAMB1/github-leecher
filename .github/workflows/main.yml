@@ -22,14 +22,19 @@ jobs:
       
       - name: دانلود فایل
         run: |
-          curl -L --fail --retry 3 -o original_file "${{ github.event.inputs.file_url }}"
+          RANDOM_VID=$((RANDOM % 90000 + 10000))
+          VIDEO_NAME="Vid${RANDOM_VID}.mp4"
+          echo "VIDEO_NAME=$VIDEO_NAME" >> $GITHUB_ENV
+          echo "RANDOM_VID=$RANDOM_VID" >> $GITHUB_ENV
+          
+          curl -L --fail --retry 3 -o "$VIDEO_NAME" "${{ github.event.inputs.file_url }}"
           TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
           echo "TIMESTAMP=$TIMESTAMP" >> $GITHUB_ENV
       
       - name: پارت بندی
         run: |
-          7z a -v95m -mx3 "archive_${{ env.TIMESTAMP }}.7z" original_file
-          rm original_file
+          7z a -v95m -mx3 "archive_${{ env.TIMESTAMP }}.7z" "${{ env.VIDEO_NAME }}"
+          rm "${{ env.VIDEO_NAME }}"
       
       - name: ساخت فایل لینک
         run: |
@@ -37,6 +42,7 @@ jobs:
           LINKS_FILE="links_${RANDOM_NUM}.txt"
           
           echo "=== لینک‌های دانلود ===" > $LINKS_FILE
+          echo "نام فایل اصلی: ${{ env.VIDEO_NAME }}" >> $LINKS_FILE
           echo "" >> $LINKS_FILE
           
           # پیدا کردن همه پارت‌ها و نوشتن لینک
@@ -53,6 +59,7 @@ jobs:
           
           echo "" >> $LINKS_FILE
           echo "=== برای合并: 7z x archive_${{ env.TIMESTAMP }}.7z.001 ===" >> $LINKS_FILE
+          echo "=== بعد از合并، فایل با اسم ${{ env.VIDEO_NAME }} باز می‌شود ===" >> $LINKS_FILE
           
           echo "LINKS_FILE=$LINKS_FILE" >> $GITHUB_ENV
       
@@ -73,6 +80,7 @@ jobs:
           echo "✅ فایل لینک‌ها:"
           echo "https://raw.githubusercontent.com/${{ github.repository }}/main/${{ env.LINKS_FILE }}"
           echo ""
+          echo "📁 نام فایل اصلی: ${{ env.VIDEO_NAME }}"
           echo "========================================="
           echo "📁 لینک‌های داخل فایل:"
           cat ${{ env.LINKS_FILE }}
