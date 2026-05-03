@@ -3,44 +3,24 @@ name: دانلود چند لینک
 on:
   workflow_dispatch:
     inputs:
-      url1:
-        description: 'لینک 1 (اختیاری)'
+      link1:
+        description: 'لینک 1'
         required: false
         type: string
-      url2:
-        description: 'لینک 2 (اختیاری)'
+      link2:
+        description: 'لینک 2'
         required: false
         type: string
-      url3:
-        description: 'لینک 3 (اختیاری)'
+      link3:
+        description: 'لینک 3'
         required: false
         type: string
-      url4:
-        description: 'لینک 4 (اختیاری)'
+      link4:
+        description: 'لینک 4'
         required: false
         type: string
-      url5:
-        description: 'لینک 5 (اختیاری)'
-        required: false
-        type: string
-      url6:
-        description: 'لینک 6 (اختیاری)'
-        required: false
-        type: string
-      url7:
-        description: 'لینک 7 (اختیاری)'
-        required: false
-        type: string
-      url8:
-        description: 'لینک 8 (اختیاری)'
-        required: false
-        type: string
-      url9:
-        description: 'لینک 9 (اختیاری)'
-        required: false
-        type: string
-      url10:
-        description: 'لینک 10 (اختیاری)'
+      link5:
+        description: 'لینک 5'
         required: false
         type: string
 
@@ -58,30 +38,51 @@ jobs:
       
       - name: دانلود فایل‌ها
         run: |
-          mkdir downloads
+          mkdir -p downloads
           cd downloads
           
-          # فقط لینک‌های غیر خالی رو دانلود کن
-          for i in 1 2 3 4 5 6 7 8 9 10; do
-            url_var="url$i"
-            url="${!url_var}"
-            if [ -n "$url" ]; then
-              echo "⬇️ دانلود لینک $i: $url"
-              curl -L --fail --retry 2 -O "$url"
-            fi
-          done
+          # چک کردن لینک 1
+          if [ -n "${{ inputs.link1 }}" ]; then
+            echo "⬇️ دانلود لینک 1: ${{ inputs.link1 }}"
+            curl -L -O "${{ inputs.link1 }}"
+          fi
+          
+          # چک کردن لینک 2
+          if [ -n "${{ inputs.link2 }}" ]; then
+            echo "⬇️ دانلود لینک 2: ${{ inputs.link2 }}"
+            curl -L -O "${{ inputs.link2 }}"
+          fi
+          
+          # چک کردن لینک 3
+          if [ -n "${{ inputs.link3 }}" ]; then
+            echo "⬇️ دانلود لینک 3: ${{ inputs.link3 }}"
+            curl -L -O "${{ inputs.link3 }}"
+          fi
+          
+          # چک کردن لینک 4
+          if [ -n "${{ inputs.link4 }}" ]; then
+            echo "⬇️ دانلود لینک 4: ${{ inputs.link4 }}"
+            curl -L -O "${{ inputs.link4 }}"
+          fi
+          
+          # چک کردن لینک 5
+          if [ -n "${{ inputs.link5 }}" ]; then
+            echo "⬇️ دانلود لینک 5: ${{ inputs.link5 }}"
+            curl -L -O "${{ inputs.link5 }}"
+          fi
           
           cd ..
-          TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
-          echo "TIMESTAMP=$TIMESTAMP" >> $GITHUB_ENV
           
           COUNT=$(ls downloads/ | wc -l)
           echo "✅ تعداد فایل‌های دانلود شده: $COUNT"
           
           if [ $COUNT -eq 0 ]; then
-            echo "❌ هیچ لینکی وارد نشده!"
+            echo "❌ هیچ فایلی دانلود نشد"
             exit 1
           fi
+          
+          TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
+          echo "TIMESTAMP=$TIMESTAMP" >> $GITHUB_ENV
       
       - name: فشرده و پارت بندی
         run: |
@@ -103,9 +104,6 @@ jobs:
             fi
           done
           
-          echo "" >> $LINKS_FILE
-          echo "=== برای合并: 7z x archive_${{ env.TIMESTAMP }}.7z.001 ===" >> $LINKS_FILE
-          
           echo "LINKS_FILE=$LINKS_FILE" >> $GITHUB_ENV
       
       - name: ارسال به ریپو
@@ -114,11 +112,9 @@ jobs:
           git config user.email "actions@github.com"
           git add archive_${{ env.TIMESTAMP }}.7z.*
           git add ${{ env.LINKS_FILE }}
-          git commit -m "دانلود فایل‌ها" || echo "done"
+          git commit -m "download" || echo "done"
           git push
       
-      - name: نمایش لینک‌ها
+      - name: نمایش لینک
         run: |
-          echo ""
-          echo "✅ فایل لینک‌ها:"
-          echo "https://raw.githubusercontent.com/${{ github.repository }}/main/${{ env.LINKS_FILE }}"
+          echo "✅ https://raw.githubusercontent.com/${{ github.repository }}/main/${{ env.LINKS_FILE }}"
