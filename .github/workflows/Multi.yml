@@ -1,11 +1,47 @@
-name: دانلود چند لینک همزمان
+name: دانلود چند لینک
 
 on:
   workflow_dispatch:
     inputs:
-      file_urls:
-        description: 'لینک‌های مستقیم (با کاما یا خط جدید جدا کن)'
-        required: true
+      url1:
+        description: 'لینک 1 (اختیاری)'
+        required: false
+        type: string
+      url2:
+        description: 'لینک 2 (اختیاری)'
+        required: false
+        type: string
+      url3:
+        description: 'لینک 3 (اختیاری)'
+        required: false
+        type: string
+      url4:
+        description: 'لینک 4 (اختیاری)'
+        required: false
+        type: string
+      url5:
+        description: 'لینک 5 (اختیاری)'
+        required: false
+        type: string
+      url6:
+        description: 'لینک 6 (اختیاری)'
+        required: false
+        type: string
+      url7:
+        description: 'لینک 7 (اختیاری)'
+        required: false
+        type: string
+      url8:
+        description: 'لینک 8 (اختیاری)'
+        required: false
+        type: string
+      url9:
+        description: 'لینک 9 (اختیاری)'
+        required: false
+        type: string
+      url10:
+        description: 'لینک 10 (اختیاری)'
+        required: false
         type: string
 
 permissions:
@@ -20,16 +56,17 @@ jobs:
       - name: نصب 7z
         run: sudo apt-get update && sudo apt-get install -y p7zip-full
       
-      - name: دانلود همه فایل‌ها
+      - name: دانلود فایل‌ها
         run: |
           mkdir downloads
           cd downloads
           
-          IFS=$'\n,'  # جداکننده: کاما یا خط جدید
-          for url in $(echo "${{ github.event.inputs.file_urls }}" | tr ',' '\n'); do
-            url=$(echo "$url" | xargs)  # حذف فاصله‌های اضافی
+          # فقط لینک‌های غیر خالی رو دانلود کن
+          for i in 1 2 3 4 5 6 7 8 9 10; do
+            url_var="url$i"
+            url="${!url_var}"
             if [ -n "$url" ]; then
-              echo "⬇️ دانلود: $url"
+              echo "⬇️ دانلود لینک $i: $url"
               curl -L --fail --retry 2 -O "$url"
             fi
           done
@@ -38,9 +75,15 @@ jobs:
           TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
           echo "TIMESTAMP=$TIMESTAMP" >> $GITHUB_ENV
           
-          echo "📁 تعداد فایل‌های دانلود شده: $(ls downloads/ | wc -l)"
+          COUNT=$(ls downloads/ | wc -l)
+          echo "✅ تعداد فایل‌های دانلود شده: $COUNT"
+          
+          if [ $COUNT -eq 0 ]; then
+            echo "❌ هیچ لینکی وارد نشده!"
+            exit 1
+          fi
       
-      - name: فشرده و پارت بندی کل پوشه
+      - name: فشرده و پارت بندی
         run: |
           7z a -v95m -mx3 "archive_${{ env.TIMESTAMP }}.7z" downloads/
           rm -rf downloads
@@ -52,7 +95,6 @@ jobs:
           
           echo "=== لینک‌های دانلود ===" > $LINKS_FILE
           echo "تاریخ: $(date)" >> $LINKS_FILE
-          echo "تعداد پارت‌ها: $(ls archive_${{ env.TIMESTAMP }}.7z.* 2>/dev/null | wc -l)" >> $LINKS_FILE
           echo "" >> $LINKS_FILE
           
           for file in archive_${{ env.TIMESTAMP }}.7z.*; do
@@ -72,16 +114,11 @@ jobs:
           git config user.email "actions@github.com"
           git add archive_${{ env.TIMESTAMP }}.7z.*
           git add ${{ env.LINKS_FILE }}
-          git commit -m "دانلود چند فایل" || echo "done"
+          git commit -m "دانلود فایل‌ها" || echo "done"
           git push
       
       - name: نمایش لینک‌ها
         run: |
           echo ""
-          echo "========================================="
           echo "✅ فایل لینک‌ها:"
           echo "https://raw.githubusercontent.com/${{ github.repository }}/main/${{ env.LINKS_FILE }}"
-          echo ""
-          echo "📁 لینک پارت اول:"
-          echo "https://raw.githubusercontent.com/${{ github.repository }}/main/archive_${{ env.TIMESTAMP }}.7z.001"
-          echo "========================================="
