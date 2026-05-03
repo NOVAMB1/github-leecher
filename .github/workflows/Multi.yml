@@ -1,0 +1,87 @@
+name: دانلود چند لینک همزمان
+
+on:
+  workflow_dispatch:
+    inputs:
+      file_urls:
+        description: 'لینک‌های مستقیم (با کاما یا خط جدید جدا کن)'
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  download:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: نصب 7z
+        run: sudo apt-get update && sudo apt-get install -y p7zip-full
+      
+      - name: دانلود همه فایل‌ها
+        run: |
+          mkdir downloads
+          cd downloads
+          
+          IFS=$'\n,'  # جداکننده: کاما یا خط جدید
+          for url in $(echo "${{ github.event.inputs.file_urls }}" | tr ',' '\n'); do
+            url=$(echo "$url" | xargs)  # حذف فاصله‌های اضافی
+            if [ -n "$url" ]; then
+              echo "⬇️ دانلود: $url"
+              curl -L --fail --retry 2 -O "$url"
+            fi
+          done
+          
+          cd ..
+          TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
+          echo "TIMESTAMP=$TIMESTAMP" >> $GITHUB_ENV
+          
+          echo "📁 تعداد فایل‌های دانلود شده: $(ls downloads/ | wc -l)"
+      
+      - name: فشرده و پارت بندی کل پوشه
+        run: |
+          7z a -v95m -mx3 "archive_${{ env.TIMESTAMP }}.7z" downloads/
+          rm -rf downloads
+      
+      - name: ساخت فایل لینک
+        run: |
+          RANDOM_NUM=$((RANDOM % 90000 + 10000))
+          LINKS_FILE="links_${RANDOM_NUM}.txt"
+          
+          echo "=== لینک‌های دانلود ===" > $LINKS_FILE
+          echo "تاریخ: $(date)" >> $LINKS_FILE
+          echo "تعداد پارت‌ها: $(ls archive_${{ env.TIMESTAMP }}.7z.* 2>/dev/null | wc -l)" >> $LINKS_FILE
+          echo "" >> $LINKS_FILE
+          
+          for file in archive_${{ env.TIMESTAMP }}.7z.*; do
+            if [ -f "$file" ]; then
+              echo "https://raw.githubusercontent.com/${{ github.repository }}/main/$file" >> $LINKS_FILE
+            fi
+          done
+          
+          echo "" >> $LINKS_FILE
+          echo "=== برای合并: 7z x archive_${{ env.TIMESTAMP }}.7z.001 ===" >> $LINKS_FILE
+          
+          echo "LINKS_FILE=$LINKS_FILE" >> $GITHUB_ENV
+      
+      - name: ارسال به ریپو
+        run: |
+          git config user.name "github-actions"
+          git config user.email "actions@github.com"
+          git add archive_${{ env.TIMESTAMP }}.7z.*
+          git add ${{ env.LINKS_FILE }}
+          git commit -m "دانلود چند فایل" || echo "done"
+          git push
+      
+      - name: نمایش لینک‌ها
+        run: |
+          echo ""
+          echo "========================================="
+          echo "✅ فایل لینک‌ها:"
+          echo "https://raw.githubusercontent.com/${{ github.repository }}/main/${{ env.LINKS_FILE }}"
+          echo ""
+          echo "📁 لینک پارت اول:"
+          echo "https://raw.githubusercontent.com/${{ github.repository }}/main/archive_${{ env.TIMESTAMP }}.7z.001"
+          echo "========================================="
