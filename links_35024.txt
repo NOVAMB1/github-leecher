@@ -1,0 +1,9 @@
+=== لینک‌های دانلود ===
+نام فایل اصلی: Vid21582.mp4
+
+https://raw.githubusercontent.com/NOVAMB1/github-leecher/main/archive_20260504_100330.7z.001
+https://raw.githubusercontent.com/NOVAMB1/github-leecher/main/archive_20260504_100330.7z.002
+https://raw.githubusercontent.com/NOVAMB1/github-leecher/main/archive_20260504_100330.7z.003
+
+=== برای合并: 7z x archive_20260504_100330.7z.001 ===
+=== بعد از合并، فایل با اسم Vid21582.mp4 باز می‌شود ===
