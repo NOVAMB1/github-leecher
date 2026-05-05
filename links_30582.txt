@@ -1,0 +1,9 @@
+=== لینک‌های دانلود ===
+نام فایل اصلی: Vid27896.mp4
+
+https://raw.githubusercontent.com/NOVAMB1/github-leecher/main/archive_20260505_030150.7z.001
+https://raw.githubusercontent.com/NOVAMB1/github-leecher/main/archive_20260505_030150.7z.002
+https://raw.githubusercontent.com/NOVAMB1/github-leecher/main/archive_20260505_030150.7z.003
+
+=== برای合并: 7z x archive_20260505_030150.7z.001 ===
+=== بعد از合并، فایل با اسم Vid27896.mp4 باز می‌شود ===
