@@ -1,4 +1,4 @@
-name: دانلود، انکد و آپلود ویدیو (720p x264)
+name: دانلود، انکد و آپلود ویدیو (720p x264 medium)
 
 on:
   workflow_dispatch:
@@ -49,9 +49,9 @@ jobs:
               echo "⬇️ دانلود لینک $NUM: $LINK"
               curl -L -o "original/file$NUM.mp4" "$LINK"
               
-              echo "🔄 انکد به 720p x264 crf 26"
+              echo "🔄 انکد به 720p x264 crf 26 با preset medium"
               ffmpeg -i "original/file$NUM.mp4" \
-                -c:v libx264 -preset ultrafast -crf 26 \
+                -c:v libx264 -preset medium -crf 26 \
                 -vf "scale=1280:720" \
                 -c:a aac -b:a 96k \
                 "encoded/encoded_$NUM.mp4"
@@ -105,7 +105,7 @@ jobs:
           git config user.email "actions@github.com"
           git add archive_${{ env.TIMESTAMP }}.7z.*
           git add ${{ env.LINKS_FILE }}
-          git commit -m "upload encoded 720p files" || echo "nothing to commit"
+          git commit -m "upload encoded 720p medium" || echo "nothing to commit"
           git push
       
       - name: نمایش لینک فایل متنی
