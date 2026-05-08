@@ -1,0 +1,118 @@
+name: دانلود، انکد و آپلود ویدیو
+
+on:
+  workflow_dispatch:
+    inputs:
+      link1:
+        description: 'لینک 1'
+        required: false
+        type: string
+      link2:
+        description: 'لینک 2'
+        required: false
+        type: string
+      link3:
+        description: 'لینک 3'
+        required: false
+        type: string
+      link4:
+        description: 'لینک 4'
+        required: false
+        type: string
+      link5:
+        description: 'لینک 5'
+        required: false
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  process:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: نصب ابزارها
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg p7zip-full
+      
+      - name: پردازش فایل‌ها
+        run: |
+          mkdir -p original encoded
+          
+          # تابع دانلود و انکد
+          process_link() {
+            LINK=$1
+            NUM=$2
+            if [ -n "$LINK" ]; then
+              echo "⬇️ دانلود لینک $NUM: $LINK"
+              curl -L -o "original/file$NUM.mp4" "$LINK"
+              
+              echo "🔄 انکد کردن فایل $NUM با x265 crf 32"
+              ffmpeg -i "original/file$NUM.mp4" \
+                -c:v libx265 -crf 32 -preset fast \
+                -c:a aac -b:a 128k \
+                "encoded/encoded_$NUM.mp4"
+              
+              rm "original/file$NUM.mp4"
+            fi
+          }
+          
+          process_link "${{ inputs.link1 }}" "1"
+          process_link "${{ inputs.link2 }}" "2"
+          process_link "${{ inputs.link3 }}" "3"
+          process_link "${{ inputs.link4 }}" "4"
+          process_link "${{ inputs.link5 }}" "5"
+          
+          cd encoded
+          
+          # چک کردن وجود فایل
+          COUNT=$(ls *.mp4 2>/dev/null | wc -l)
+          if [ $COUNT -eq 0 ]; then
+            echo "❌ هیچ فایلی پردازش نشد"
+            exit 1
+          fi
+          
+          echo "✅ تعداد فایل‌های انکد شده: $COUNT"
+          cd ..
+      
+      - name: فشرده‌سازی و پارت بندی
+        run: |
+          TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
+          echo "TIMESTAMP=$TIMESTAMP" >> $GITHUB_ENV
+          
+          7z a -v95m -mx3 "archive_$TIMESTAMP.7z" encoded/
+          rm -rf encoded
+      
+      - name: ساخت فایل لینک
+        run: |
+          RANDOM_NUM=$((RANDOM % 90000 + 10000))
+          LINKS_FILE="links_${RANDOM_NUM}.txt"
+          
+          echo "=== لینک‌های دانلود ===" > $LINKS_FILE
+          echo "تاریخ: $(date)" >> $LINKS_FILE
+          echo "تعداد پارت‌ها:" >> $LINKS_FILE
+          echo "" >> $LINKS_FILE
+          
+          for file in archive_${{ env.TIMESTAMP }}.7z.*; do
+            if [ -f "$file" ]; then
+              echo "https://raw.githubusercontent.com/${{ github.repository }}/main/$file" >> $LINKS_FILE
+            fi
+          done
+          
+          echo "LINKS_FILE=$LINKS_FILE" >> $GITHUB_ENV
+      
+      - name: آپلود به مخزن
+        run: |
+          git config user.name "github-actions"
+          git config user.email "actions@github.com"
+          git add archive_${{ env.TIMESTAMP }}.7z.*
+          git add ${{ env.LINKS_FILE }}
+          git commit -m "upload encoded files" || echo "nothing to commit"
+          git push
+      
+      - name: نمایش لینک فایل متنی
+        run: |
+          echo "✅ فایل لینک‌ها: https://raw.githubusercontent.com/${{ github.repository }}/main/${{ env.LINKS_FILE }}"
