@@ -1,0 +1,389 @@
+name: YouTube Search
+
+on:
+  workflow_dispatch:
+    inputs:
+      search_query:
+        description: '🔍 چی رو سرچ کنم؟'
+        required: true
+        default: 'eminem'
+        type: string
+      clear_old:
+        description: '🗑 پاک کردن کامل فایل‌های قبلی (عکس‌ها + نتایج)'
+        required: false
+        default: true
+        type: boolean
+      max_results:
+        description: '📊 تعداد نتایج (حداکثر ۵۰)'
+        required: false
+        default: '30'
+        type: choice
+        options:
+          - '10'
+          - '20'
+          - '30'
+          - '40'
+          - '50'
+
+permissions:
+  contents: write
+
+jobs:
+  search:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install yt-dlp
+        run: |
+          python -m pip install yt-dlp
+
+      - name: Clean everything if requested
+        if: github.event.inputs.clear_old == 'true'
+        run: |
+          # پاک کردن کامل پوشه‌های قدیمی
+          rm -rf "YouTube Search"
+          rm -rf thumbnails
+          # ساختن دوباره پوشه‌های خالی
+          mkdir -p "YouTube Search"
+          mkdir -p thumbnails
+          echo "✅ تمام فایل‌های قبلی پاک شدن"
+
+      - name: Create directories (if not exists)
+        run: |
+          mkdir -p "YouTube Search"
+          mkdir -p thumbnails
+
+      - name: Search YouTube and download thumbnails
+        run: |
+          SEARCH="${{ github.event.inputs.search_query }}"
+          MAX_RESULTS="${{ github.event.inputs.max_results }}"
+          
+          echo "🔍 در حال جستجوی: $SEARCH"
+          echo "📊 حداکثر نتایج: $MAX_RESULTS"
+          
+          # حذف فایل JSON قبلی (اگه باشه)
+          rm -f "YouTube Search/results.json"
+          
+          # اجرای سرچ با yt-dlp
+          yt-dlp "ytsearch${MAX_RESULTS}:${SEARCH}" \
+            --dump-json \
+            --skip-download \
+            > "YouTube Search/results.json"
+          
+          echo "✅ جستجو انجام شد"
+          
+          # دانلود تامنیل‌ها
+          python3 << EOF
+          import json
+          import urllib.request
+          import os
+          import hashlib
+          
+          with open('YouTube Search/results.json', 'r', encoding='utf-8') as f:
+              results = [json.loads(line) for line in f]
+          
+          print(f"📥 دانلود {len(results)} تامنیل...")
+          
+          for i, video in enumerate(results):
+              thumbnail_url = video.get('thumbnail', '')
+              video_id = video.get('id', str(i))
+              
+              if thumbnail_url:
+                  try:
+                      # گرفتن پسوند از URL
+                      url_lower = thumbnail_url.lower()
+                      if 'webp' in url_lower:
+                          ext = 'webp'
+                      elif 'png' in url_lower:
+                          ext = 'png'
+                      else:
+                          ext = 'jpg'
+                      
+                      filename = f"thumbnails/{video_id}.{ext}"
+                      urllib.request.urlretrieve(thumbnail_url, filename)
+                      print(f"  ✓ دانلود: {filename}")
+                  except Exception as e:
+                      print(f"  ✗ خطا برای ویدیو {i}: {e}")
+          
+          print("✅ همه تامنیل‌ها دانلود شدن")
+          EOF
+
+      - name: Generate random filename for HTML
+        id: random
+        run: |
+          RANDOM_NAME=$(date +%s%N | md5sum | head -c 10)
+          echo "filename=${RANDOM_NAME}" >> $GITHUB_OUTPUT
+
+      - name: Generate HTML page
+        run: |
+          SEARCH="${{ github.event.inputs.search_query }}"
+          RANDOM_NAME="${{ steps.random.outputs.filename }}"
+          HTML_FILE="YouTube Search/${RANDOM_NAME}.html"
+          
+          python3 << EOF
+          import json
+          import os
+          import urllib.parse
+          
+          search_query = "${{ github.event.inputs.search_query }}"
+          random_name = "${{ steps.random.outputs.filename }}"
+          html_file = f"YouTube Search/{random_name}.html"
+          
+          with open('YouTube Search/results.json', 'r', encoding='utf-8') as f:
+              results = [json.loads(line) for line in f]
+          
+          # پیدا کردن همه فایل‌های HTML قدیمی به جز فایل current
+          import glob
+          old_htmls = glob.glob('YouTube Search/*.html')
+          for old in old_htmls:
+              if old != html_file:
+                  try:
+                      os.remove(old)
+                      print(f"🗑 حذف فایل قدیمی: {old}")
+                  except:
+                      pass
+          
+          html = f'''<!DOCTYPE html>
+          <html lang="fa" dir="rtl">
+          <head>
+              <meta charset="UTF-8">
+              <meta name="viewport" content="width=device-width, initial-scale=1.0">
+              <title>YouTube Search: {search_query}</title>
+              <style>
+                  * {{
+                      margin: 0;
+                      padding: 0;
+                      box-sizing: border-box;
+                  }}
+                  body {{
+                      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+                      background: #0f0f0f;
+                      color: #f1f1f1;
+                      padding: 20px;
+                  }}
+                  .header {{
+                      background: #202020;
+                      padding: 15px 20px;
+                      border-radius: 10px;
+                      margin-bottom: 25px;
+                      position: sticky;
+                      top: 0;
+                      z-index: 100;
+                  }}
+                  .header h1 {{
+                      font-size: 24px;
+                      color: #ff0000;
+                  }}
+                  .header p {{
+                      color: #aaa;
+                      margin-top: 5px;
+                  }}
+                  .results-grid {{
+                      display: grid;
+                      grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+                      gap: 25px;
+                  }}
+                  .video-card {{
+                      background: #1a1a1a;
+                      border-radius: 12px;
+                      overflow: hidden;
+                      transition: transform 0.2s, background 0.2s;
+                  }}
+                  .video-card:hover {{
+                      background: #2a2a2a;
+                      transform: translateY(-5px);
+                  }}
+                  .thumbnail {{
+                      width: 100%;
+                      aspect-ratio: 16/9;
+                      object-fit: cover;
+                  }}
+                  .video-info {{
+                      padding: 12px;
+                  }}
+                  .video-title {{
+                      font-size: 16px;
+                      font-weight: 500;
+                      margin-bottom: 8px;
+                      line-height: 1.4;
+                      color: #f1f1f1;
+                      text-decoration: none;
+                      display: block;
+                  }}
+                  .video-title:hover {{
+                      color: #3ea6ff;
+                  }}
+                  .video-channel {{
+                      font-size: 13px;
+                      color: #aaa;
+                      margin-bottom: 5px;
+                  }}
+                  .video-stats {{
+                      font-size: 12px;
+                      color: #888;
+                      margin-bottom: 10px;
+                  }}
+                  .video-link {{
+                      display: inline-block;
+                      margin-top: 8px;
+                      padding: 6px 12px;
+                      background: #3ea6ff;
+                      color: #0f0f0f;
+                      text-decoration: none;
+                      border-radius: 18px;
+                      font-size: 12px;
+                      font-weight: 500;
+                  }}
+                  .video-link:hover {{
+                      background: #65b8ff;
+                  }}
+                  .copy-link {{
+                      display: inline-block;
+                      margin-top: 8px;
+                      margin-right: 8px;
+                      padding: 6px 12px;
+                      background: #383838;
+                      color: #f1f1f1;
+                      text-decoration: none;
+                      border-radius: 18px;
+                      font-size: 12px;
+                      cursor: pointer;
+                      border: none;
+                  }}
+                  .copy-link:hover {{
+                      background: #4a4a4a;
+                  }}
+                  .no-results {{
+                      text-align: center;
+                      padding: 50px;
+                      font-size: 18px;
+                      color: #aaa;
+                  }}
+                  .badge {{
+                      background: #ff0000;
+                      color: white;
+                      padding: 2px 8px;
+                      border-radius: 12px;
+                      font-size: 11px;
+                      margin-right: 8px;
+                  }}
+                  @media (max-width: 700px) {{
+                      .results-grid {{
+                          grid-template-columns: 1fr;
+                      }}
+                  }}
+              </style>
+          </head>
+          <body>
+              <div class="header">
+                  <h1>🎬 YouTube Search: {search_query}</h1>
+                  <p>📋 برای کپی لینک ویدیو، روی دکمه "کپی لینک" کلیک کنید | تعداد نتایج: {len(results)}</p>
+              </div>
+              <div class="results-grid">
+          '''
+          
+          for i, video in enumerate(results):
+              title = video.get('title', 'بدون عنوان')
+              channel = video.get('channel', 'نامشخص')
+              video_url = video.get('webpage_url', '')
+              video_id = video.get('id', '')
+              view_count = video.get('view_count', 0)
+              duration = video.get('duration', 0)
+              
+              # تبدیل تعداد بازدید
+              if view_count >= 1000000:
+                  views = f"{(view_count/1000000):.1f}M"
+              elif view_count >= 1000:
+                  views = f"{(view_count/1000):.1f}K"
+              else:
+                  views = str(view_count)
+              
+              # تبدیل مدت زمان
+              if duration:
+                  minutes = duration // 60
+                  seconds = duration % 60
+                  duration_str = f"{minutes}:{seconds:02d}"
+              else:
+                  duration_str = "?"
+              
+              # پیدا کردن تامنیل
+              thumbnail_path = f"thumbnails/{video_id}"
+              # امتحان پسوندهای مختلف
+              found = False
+              for ext in ['jpg', 'jpeg', 'png', 'webp']:
+                  if os.path.exists(f"{thumbnail_path}.{ext}"):
+                      thumbnail_path = f"{thumbnail_path}.{ext}"
+                      found = True
+                      break
+              
+              if not found:
+                  thumbnail_path = video.get('thumbnail', '')
+              
+              html += f'''
+                  <div class="video-card">
+                      <img class="thumbnail" src="../{thumbnail_path}" alt="thumbnail" onerror="this.src='https://via.placeholder.com/320x180?text=No+Thumbnail'">
+                      <div class="video-info">
+                          <a href="{video_url}" target="_blank" class="video-title">{title}</a>
+                          <div class="video-channel">{channel}</div>
+                          <div class="video-stats">👁️ {views} بازدید • ⏱️ {duration_str}</div>
+                          <div>
+                              <a href="{video_url}" target="_blank" class="video-link">▶ تماشا در یوتیوب</a>
+                              <button class="copy-link" onclick="copyToClipboard('{video_url}')">📋 کپی لینک</button>
+                          </div>
+                      </div>
+                  </div>
+              '''
+          
+          html += '''
+              </div>
+              <script>
+                  function copyToClipboard(text) {
+                      navigator.clipboard.writeText(text).then(() => {
+                          alert('✅ لینک کپی شد!');
+                      }).catch(() => {
+                          prompt('❌ لینک رو دستی کپی کن:', text);
+                      });
+                  }
+              </script>
+          </body>
+          </html>
+          '''
+          
+          with open(html_file, 'w', encoding='utf-8') as f:
+              f.write(html)
+          
+          # ذخیره نام فایل در یک فایل text برای دسترسی بعدی
+          with open('YouTube Search/latest.txt', 'w') as f:
+              f.write(f"{random_name}.html")
+          
+          print(f"✅ HTML generated: {html_file}")
+          print(f"📄 تعداد نتایج: {len(results)}")
+          EOF
+
+      - name: Commit and push
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add "YouTube Search/" thumbnails/ -f
+          git commit -m "🔍 YouTube search: ${{ github.event.inputs.search_query }} - $(date '+%Y-%m-%d %H:%M:%S')" || echo "No changes to commit"
+          git push
+          
+      - name: Show result link
+        run: |
+          RANDOM_NAME="${{ steps.random.outputs.filename }}"
+          REPO="${{ github.repository }}"
+          echo "========================================="
+          echo "✅ جستجو کامل شد!"
+          echo "========================================="
+          echo "🔗 لینک نتیجه:"
+          echo "https://github.com/${REPO}/blob/main/YouTube%20Search/${RANDOM_NAME}.html"
+          echo "========================================="
