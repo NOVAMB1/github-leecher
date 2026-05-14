@@ -1,15 +1,23 @@
-name: دانلود فایل نصبی گوگل پلی
+name: دانلود فایل نصبی (گوگل پلی یا APKPure)
 
 on:
   workflow_dispatch:
     inputs:
+      source:
+        description: 'Source to download from?'
+        required: true
+        type: choice
+        default: 'google_play'
+        options:
+          - google_play
+          - apkpure
       package_name:
         description: 'Package name (e.g., com.google.android.youtube)'
         required: true
         type: string
       architecture:
-        description: 'Target architecture'
-        required: true
+        description: 'Target architecture (for Google Play)'
+        required: false
         type: choice
         default: 'arm64'
         options:
@@ -35,6 +43,239 @@ on:
           - release
       release_tag:
         description: 'Release tag (e.g., v1.0.0). Leave empty for auto-generate'
+        required: false
+        type: string
+        default: ''
+
+permissions:
+  contents: write
+  actions: write
+
+jobs:
+  download-apk:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create output folder
+        run: mkdir -p "${{ inputs.output_folder }}"
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y openjdk-17-jre-headless apksigner python3 python3-venv python3-pip curl git p7zip-full wget unzip
+
+      # ============================================
+      # دانلود از گوگل پلی
+      # ============================================
+      - name: Download from Google Play
+        if: inputs.source == 'google_play'
+        run: |
+          git clone https://github.com/alltechdev/gplay-apk-downloader.git
+          cd gplay-apk-downloader
+          ./setup.sh
+          echo "y" | ./gplay auth
+          
+          ARCH="${{ inputs.architecture }}"
+          MERGE="${{ inputs.merge_splits }}"
+          OUTPUT_DIR="../${{ inputs.output_folder }}"
+          
+          CMD="./gplay download ${{ inputs.package_name }} -a $ARCH -o $OUTPUT_DIR"
+          if [ "$MERGE" = "true" ]; then
+            CMD="$CMD -m"
+          fi
+          
+          echo "Running: $CMD"
+          $CMD
+          
+          cd "$OUTPUT_DIR"
+          if [ "$MERGE" = "true" ]; then
+            DOWNLOADED_FILE=$(ls -1 *.apk 2>/dev/null | head -n1)
+          else
+            DOWNLOADED_FILE=$(ls -1 *.apk *.zip 2>/dev/null | head -n1)
+          fi
+          
+          if [ -z "$DOWNLOADED_FILE" ]; then
+            echo "Error: No file downloaded from Google Play"
+            exit 1
+          fi
+          
+          echo "downloaded_file_path=$OUTPUT_DIR/$DOWNLOADED_FILE" >> $GITHUB_OUTPUT
+          echo "downloaded_file_name=$DOWNLOADED_FILE" >> $GITHUB_OUTPUT
+
+      # ============================================
+      # دانلود از APKPure
+      # ============================================
+      - name: Download from APKPure
+        if: inputs.source == 'apkpure'
+        id: download_apkpure
+        run: |
+          PACKAGE="${{ inputs.package_name }}"
+          OUTPUT_DIR="${{ inputs.output_folder }}"
+          
+          # نصب ابزار apkpure-downloader
+          pip install apkpure-downloader
+          
+          # دانلود از APKPure
+          apkpure-downloader -p "$PACKAGE" -o "$OUTPUT_DIR"
+          
+          cd "$OUTPUT_DIR"
+          DOWNLOADED_FILE=$(ls -1 *.apk 2>/dev/null | head -n1)
+          
+          if [ -z "$DOWNLOADED_FILE" ]; then
+            echo "Trying alternative method..."
+            # روش جایگزین با wget و scraping
+            # ساخت لینک دانلود APKPure
+            VERSION=$(curl -s "https://apkpure.net/api/apk/version?pkg=$PACKAGE" | jq -r '.version')
+            URL=$(curl -s "https://apkpure.net/api/apk/download?pkg=$PACKAGE&version=$VERSION" | jq -r '.url')
+            wget -O "$OUTPUT_DIR/$PACKAGE.apk" "$URL"
+            DOWNLOADED_FILE="$PACKAGE.apk"
+          fi
+          
+          if [ ! -f "$DOWNLOADED_FILE" ]; then
+            echo "Error: No file downloaded from APKPure"
+            exit 1
+          fi
+          
+          echo "downloaded_file_path=$OUTPUT_DIR/$DOWNLOADED_FILE" >> $GITHUB_OUTPUT
+          echo "downloaded_file_name=$DOWNLOADED_FILE" >> $GITHUB_OUTPUT
+
+      - name: Generate timestamp for unique archive
+        id: timestamp
+        run: echo "value=$(date +%Y%m%d_%H%M%S)" >> $GITHUB_OUTPUT
+
+      # ============================================
+      # برای Repository: اسپلیت 85 مگابایتی
+      # ============================================
+      - name: Create split archive for Repository (85MB chunks)
+        if: inputs.storage_location == 'repository'
+        run: |
+          DOWNLOADED_FILE="${{ steps.download.outputs.downloaded_file_path || steps.download_apkpure.outputs.downloaded_file_path }}"
+          TIMESTAMP="${{ steps.timestamp.outputs.value }}"
+          PACKAGE_NAME="${{ inputs.package_name }}"
+          SOURCE="${{ inputs.source }}"
+          
+          ARCHIVE_NAME="${PACKAGE_NAME}_${SOURCE}_${TIMESTAMP}"
+          
+          cd "${{ inputs.output_folder }}"
+          
+          7z a -mx=3 -v85m "${ARCHIVE_NAME}.7z" "$(basename "$DOWNLOADED_FILE")"
+          
+          if [ -f "${ARCHIVE_NAME}.7z.001" ] && [ ! -f "${ARCHIVE_NAME}.7z.002" ]; then
+            mv "${ARCHIVE_NAME}.7z.001" "${ARCHIVE_NAME}.7z"
+          fi
+          
+          rm -f "$(basename "$DOWNLOADED_FILE")"
+
+      # ============================================
+      # برای Release: اسپلیت فقط اگه از 1.5GB بزرگتر باشه
+      # ============================================
+      - name: Prepare file for Release (split if > 1.5GB)
+        if: inputs.storage_location == 'release'
+        run: |
+          DOWNLOADED_FILE="${{ steps.download.outputs.downloaded_file_path || steps.download_apkpure.outputs.downloaded_file_path }}"
+          TIMESTAMP="${{ steps.timestamp.outputs.value }}"
+          PACKAGE_NAME="${{ inputs.package_name }}"
+          SOURCE="${{ inputs.source }}"
+          FILE_SIZE=$(stat -c%s "$DOWNLOADED_FILE")
+          LIMIT_BYTES=$((1500 * 1024 * 1024))
+          
+          cd "${{ inputs.output_folder }}"
+          FILENAME=$(basename "$DOWNLOADED_FILE")
+          
+          echo "File size: $(echo "scale=2; $FILE_SIZE / 1024 / 1024 / 1024" | bc) GB"
+          
+          if [ $FILE_SIZE -gt $LIMIT_BYTES ]; then
+            echo "⚠️ File is larger than 1.5GB, splitting into 1.5GB parts..."
+            ARCHIVE_NAME="${PACKAGE_NAME}_${SOURCE}_${TIMESTAMP}"
+            7z a -mx=3 -v1500m "${ARCHIVE_NAME}.7z" "$FILENAME"
+            rm -f "$FILENAME"
+            echo "split_done=true" >> $GITHUB_OUTPUT
+          else
+            echo "✅ File size is under 1.5GB, no splitting needed"
+            echo "split_done=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Clean up temp files
+        run: |
+          cd "${{ inputs.output_folder }}"
+          rm -rf *_contents/ 2>/dev/null || true
+          echo "Files ready:"
+          ls -la
+
+      # ============================================
+      # ذخیره در مخزن (Repository)
+      # ============================================
+      - name: Commit and push to Repository
+        if: inputs.storage_location == 'repository'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add "${{ inputs.output_folder }}/"
+          git commit -m "Download ${{ inputs.package_name }} from ${{ inputs.source }} [skip ci]" || echo "No changes to commit"
+          git push
+
+      # ============================================
+      # ساخت تگ (برای Release)
+      # ============================================
+      - name: Generate or use provided tag
+        id: tag
+        if: inputs.storage_location == 'release'
+        run: |
+          if [ -n "${{ inputs.release_tag }}" ]; then
+            TAG="${{ inputs.release_tag }}"
+          else
+            TAG="v$(date +%Y%m%d-%H%M%S)"
+          fi
+          echo "tag_name=$TAG" >> $GITHUB_OUTPUT
+          echo "Using tag: $TAG"
+          
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag "$TAG" || true
+          git push origin "$TAG" || true
+
+      # ============================================
+      # ساخت Release و آپلود
+      # ============================================
+      - name: Create Release and Upload Assets
+        if: inputs.storage_location == 'release'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.tag.outputs.tag_name }}
+          name: "Release ${{ steps.tag.outputs.tag_name }} - ${{ inputs.package_name }}"
+          body: |
+            📱 **Package:** `${{ inputs.package_name }}`
+            📥 **Source:** ${{ inputs.source }}
+            🖥️ **Architecture:** ${{ inputs.architecture }}
+            🔗 **Merge Splits:** ${{ inputs.merge_splits }}
+            📅 **Date:** $(date '+%Y-%m-%d %H:%M:%S')
+            
+            ---
+            🤖 Auto-generated by GitHub Actions
+          files: |
+            ${{ inputs.output_folder }}/*
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Show result
+        run: |
+          if [ "${{ inputs.storage_location }}" = "repository" ]; then
+            echo "✅ Files saved to repository in ${{ inputs.output_folder }}/"
+            echo "📥 Source: ${{ inputs.source }}"
+          else
+            TAG="${{ steps.tag.outputs.tag_name }}"
+            echo "✅ Release created successfully!"
+            echo "🔗 https://github.com/${{ github.repository }}/releases/tag/$TAG"
+            echo "📥 Source: ${{ inputs.source }}"
+          fi        description: 'Release tag (e.g., v1.0.0). Leave empty for auto-generate'
         required: false
         type: string
         default: ''
