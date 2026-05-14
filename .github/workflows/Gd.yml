@@ -1,0 +1,192 @@
+name: دانلود فایل نصبی گوگل پلی
+
+on:
+  workflow_dispatch:
+    inputs:
+      package_name:
+        description: 'Package name (e.g., com.google.android.youtube)'
+        required: true
+        type: string
+      architecture:
+        description: 'Target architecture'
+        required: true
+        type: choice
+        default: 'arm64'
+        options:
+          - arm64
+          - armv7
+      merge_splits:
+        description: 'Merge split APKs into single installable APK'
+        required: false
+        type: boolean
+        default: true
+      output_folder:
+        description: 'Output folder (relative to repo root)'
+        required: false
+        type: string
+        default: 'downloads'
+      # 👇 گزینه جدید برای انتخاب محل ذخیره‌سازی
+      storage_location:
+        description: 'Where to store the downloaded file?'
+        required: true
+        type: choice
+        default: 'repository'
+        options:
+          - repository  (ذخیره در خود مخزن)
+          - release     (ذخیره در بخش ریلیز)
+      release_tag:
+        description: 'Release tag (e.g., v1.0.0). Leave empty for auto-generate'
+        required: false
+        type: string
+        default: ''
+
+permissions:
+  contents: write
+
+jobs:
+  download-apk:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 1
+
+      - name: Create output folder
+        run: mkdir -p "${{ inputs.output_folder }}"
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y openjdk-17-jre-headless apksigner python3 python3-venv python3-pip curl git
+
+      - name: Clone gplay-apk-downloader
+        run: |
+          git clone https://github.com/alltechdev/gplay-apk-downloader.git
+          cd gplay-apk-downloader
+          ./setup.sh
+
+      - name: Authenticate with Google Play
+        run: |
+          cd gplay-apk-downloader
+          echo "y" | ./gplay auth
+          echo "Authentication completed."
+
+      - name: Download APK
+        id: download
+        run: |
+          cd gplay-apk-downloader
+          ARCH="${{ inputs.architecture }}"
+          MERGE="${{ inputs.merge_splits }}"
+          OUTPUT_DIR="../${{ inputs.output_folder }}"
+          
+          CMD="./gplay download ${{ inputs.package_name }} -a $ARCH -o $OUTPUT_DIR"
+          if [ "$MERGE" = "true" ]; then
+            CMD="$CMD -m"
+          fi
+          
+          echo "Running: $CMD"
+          $CMD
+          
+          cd "$OUTPUT_DIR"
+          if [ "$MERGE" = "true" ]; then
+            DOWNLOADED_FILE=$(ls -1 *.apk 2>/dev/null | head -n1)
+          else
+            DOWNLOADED_FILE=$(ls -1 *.apk *.zip 2>/dev/null | head -n1)
+          fi
+          
+          if [ -z "$DOWNLOADED_FILE" ]; then
+            echo "Error: No file downloaded"
+            exit 1
+          fi
+          
+          echo "downloaded_file_path=$OUTPUT_DIR/$DOWNLOADED_FILE" >> $GITHUB_OUTPUT
+          echo "downloaded_file_name=$DOWNLOADED_FILE" >> $GITHUB_OUTPUT
+
+      - name: Generate timestamp for unique archive
+        id: timestamp
+        run: echo "value=$(date +%Y%m%d_%H%M%S)" >> $GITHUB_OUTPUT
+
+      - name: Create split archive (85MB chunks)
+        run: |
+          DOWNLOADED_FILE="${{ steps.download.outputs.downloaded_file_path }}"
+          TIMESTAMP="${{ steps.timestamp.outputs.value }}"
+          PACKAGE_NAME="${{ inputs.package_name }}"
+          ARCH="${{ inputs.architecture }}"
+          
+          if [ "${{ inputs.merge_splits }}" = "true" ]; then
+            ARCHIVE_NAME="${PACKAGE_NAME}_${ARCH}_merged_${TIMESTAMP}"
+          else
+            ARCHIVE_NAME="${PACKAGE_NAME}_${ARCH}_splits_${TIMESTAMP}"
+          fi
+          
+          cd "${{ inputs.output_folder }}"
+          
+          if [ "${{ inputs.merge_splits }}" = "true" ]; then
+            7z a -mx=3 -v85m "${ARCHIVE_NAME}.7z" "$(basename "$DOWNLOADED_FILE")"
+          else
+            mkdir -p "${ARCHIVE_NAME}_contents"
+            cp "$(basename "$DOWNLOADED_FILE")" "${ARCHIVE_NAME}_contents/"
+            7z a -mx=3 -v85m "${ARCHIVE_NAME}.7z" "${ARCHIVE_NAME}_contents/"
+          fi
+          
+          if [ -f "${ARCHIVE_NAME}.7z.001" ] && [ ! -f "${ARCHIVE_NAME}.7z.002" ]; then
+            mv "${ARCHIVE_NAME}.7z.001" "${ARCHIVE_NAME}.7z"
+          fi
+
+      - name: Remove original downloaded file(s)
+        run: |
+          DOWNLOADED_FILE="${{ steps.download.outputs.downloaded_file_path }}"
+          if [[ -n "$DOWNLOADED_FILE" && -f "$DOWNLOADED_FILE" ]]; then
+            rm "$DOWNLOADED_FILE"
+          fi
+          rm -rf "${{ inputs.output_folder }}"/*_contents/
+
+      # ============================================
+      # مرحله: ذخیره در مخزن (Repository)
+      # ============================================
+      - name: Commit and push to Repository
+        if: inputs.storage_location == 'repository'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add "${{ inputs.output_folder }}/"
+          git commit -m "Download ${{ inputs.package_name }} (${{ inputs.architecture }}) from Google Play [skip ci]" || echo "No changes to commit"
+          git push
+
+      # ============================================
+      # مرحله: ساخت تگ (در صورت نیاز برای Release)
+      # ============================================
+      - name: Generate or use provided tag
+        id: tag
+        if: inputs.storage_location == 'release'
+        run: |
+          if [ -n "${{ inputs.release_tag }}" ]; then
+            TAG="${{ inputs.release_tag }}"
+          else
+            TAG="v$(date +%Y%m%d-%H%M%S)"
+          fi
+          echo "tag_name=$TAG" >> $GITHUB_OUTPUT
+          echo "Using tag: $TAG"
+
+      # ============================================
+      # مرحله: ساخت Release و آپلود فایل
+      # ============================================
+      - name: Create Release and Upload Assets
+        if: inputs.storage_location == 'release'
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ steps.tag.outputs.tag_name }}
+          name: "Release ${{ steps.tag.outputs.tag_name }} - ${{ inputs.package_name }}"
+          body: |
+            Auto-generated release for **${{ inputs.package_name }}**
+            - Architecture: ${{ inputs.architecture }}
+            - Merged splits: ${{ inputs.merge_splits }}
+            - Download date: $(date '+%Y-%m-%d %H:%M:%S')
+          files: |
+            ${{ inputs.output_folder }}/*
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
