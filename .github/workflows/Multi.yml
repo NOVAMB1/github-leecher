@@ -54,25 +54,20 @@ jobs:
               --retry 999 \
               --retry-delay 5 \
               --connect-timeout 30 \
-              --speed-time 30 \
-              --speed-limit 1024 \
               -C - \
               -o "file_$NUM" \
-              "$URL"
-
-            if [ $? -ne 0 ]; then
-              echo "❌ دانلود لینک $NUM شکست خورد"
-              exit 1
-            fi
+              "$URL" || true
 
             SIZE=$(stat -c%s "file_$NUM" 2>/dev/null || echo 0)
 
-            if [ "$SIZE" -le 0 ]; then
-              echo "❌ فایل دانلود نشده"
+            if [ "$SIZE" -le 1048576 ]; then
+              echo "❌ دانلود خراب یا ناقصه"
               exit 1
             fi
 
-            echo "✅ دانلود کامل شد: file_$NUM"
+            MB=$((SIZE / 1024 / 1024))
+
+            echo "✅ دانلود کامل شد | ${MB}MB"
           }
 
           if [ -n "${{ inputs.link1 }}" ]; then
