@@ -37,7 +37,7 @@ jobs:
       - name: نصب 7z
         run: |
           sudo apt-get update
-          sudo apt-get install -y p7zip-full
+          sudo apt-get install -y p7zip-full wget
 
       - name: دانلود فایل‌ها
         run: |
@@ -48,56 +48,43 @@ jobs:
             URL="$1"
             NUM="$2"
 
-            echo "⬇️ دانلود لینک $NUM: $URL"
+            echo "⬇️ دانلود لینک $NUM"
 
-            curl -L \
-              --retry 999 \
-              --retry-delay 5 \
-              --connect-timeout 30 \
-              -C - \
-              -o "file_$NUM" \
+            wget \
+              --no-check-certificate \
+              --content-disposition \
+              --tries=999 \
+              --waitretry=5 \
+              --read-timeout=30 \
+              --timeout=30 \
+              --continue \
+              -O "file_$NUM" \
               "$URL" || true
 
             SIZE=$(stat -c%s "file_$NUM" 2>/dev/null || echo 0)
 
-            if [ "$SIZE" -le 1048576 ]; then
-              echo "❌ دانلود خراب یا ناقصه"
+            echo "📦 حجم دانلود شده: $SIZE"
+
+            if [ "$SIZE" -lt 100000 ]; then
+              echo "❌ دانلود نشد"
               exit 1
             fi
 
-            MB=$((SIZE / 1024 / 1024))
-
-            echo "✅ دانلود کامل شد | ${MB}MB"
+            echo "✅ اوکی"
           }
 
-          if [ -n "${{ inputs.link1 }}" ]; then
-            download_file "${{ inputs.link1 }}" "1"
-          fi
-
-          if [ -n "${{ inputs.link2 }}" ]; then
-            download_file "${{ inputs.link2 }}" "2"
-          fi
-
-          if [ -n "${{ inputs.link3 }}" ]; then
-            download_file "${{ inputs.link3 }}" "3"
-          fi
-
-          if [ -n "${{ inputs.link4 }}" ]; then
-            download_file "${{ inputs.link4 }}" "4"
-          fi
-
-          if [ -n "${{ inputs.link5 }}" ]; then
-            download_file "${{ inputs.link5 }}" "5"
-          fi
+          [ -n "${{ inputs.link1 }}" ] && download_file "${{ inputs.link1 }}" "1"
+          [ -n "${{ inputs.link2 }}" ] && download_file "${{ inputs.link2 }}" "2"
+          [ -n "${{ inputs.link3 }}" ] && download_file "${{ inputs.link3 }}" "3"
+          [ -n "${{ inputs.link4 }}" ] && download_file "${{ inputs.link4 }}" "4"
+          [ -n "${{ inputs.link5 }}" ] && download_file "${{ inputs.link5 }}" "5"
 
           cd ..
 
           COUNT=$(ls downloads/ | wc -l)
 
-          echo "✅ تعداد فایل‌های دانلود شده: $COUNT"
-
-          if [ $COUNT -eq 0 ]; then
-            echo "❌ هیچ فایلی دانلود نشد"
+          if [ "$COUNT" -eq 0 ]; then
+            echo "❌ هیچ فایل دانلود نشد"
             exit 1
           fi
 
@@ -115,7 +102,6 @@ jobs:
           LINKS_FILE="links_${RANDOM_NUM}.txt"
 
           echo "=== لینک‌های دانلود ===" > $LINKS_FILE
-          echo "تاریخ: $(date)" >> $LINKS_FILE
           echo "" >> $LINKS_FILE
 
           for file in archive_${{ env.TIMESTAMP }}.7z.*; do
@@ -140,5 +126,5 @@ jobs:
 
       - name: نمایش لینک
         run: |
-          echo "✅ لینک فایل:"
+          echo "✅ لینک:"
           echo "https://raw.githubusercontent.com/${{ github.repository }}/main/${{ env.LINKS_FILE }}"
