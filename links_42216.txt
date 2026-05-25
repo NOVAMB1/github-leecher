@@ -1,0 +1,8 @@
+=== لینک‌های دانلود ===
+نام فایل اصلی: Vid37115.mp4
+
+https://raw.githubusercontent.com/NOVAMB1/github-leecher/main/archive_20260525_210328.7z.001
+https://raw.githubusercontent.com/NOVAMB1/github-leecher/main/archive_20260525_210328.7z.002
+
+=== برای合并: 7z x archive_20260525_210328.7z.001 ===
+=== بعد از合并، فایل با اسم Vid37115.mp4 باز می‌شود ===
