@@ -1,0 +1,7 @@
+=== لینک‌های دانلود ===
+نام فایل اصلی: Vid24251.mp4
+
+https://raw.githubusercontent.com/NOVAMB1/github-leecher/main/archive_20260525_205833.7z.001
+
+=== برای合并: 7z x archive_20260525_205833.7z.001 ===
+=== بعد از合并، فایل با اسم Vid24251.mp4 باز می‌شود ===
